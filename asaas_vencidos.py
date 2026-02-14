@@ -7,6 +7,11 @@ from datetime import datetime
 from teste_email import enviar_email_com_anexo
 
 # ==============================
+# CACHE DE CLIENTES (para não chamar API repetido)
+# ==============================
+CLIENTES_CACHE: dict[str, str] = {}
+
+# ==============================
 # DIAGNÓSTICO (pode deixar)
 # ==============================
 print("RODANDO:", __file__)
@@ -32,9 +37,7 @@ HEADERS = {
     "User-Agent": "mecanicaautomation/1.0"
 }
 
-# IMPORTANTÍSSIMO:
-# No GitHub Actions (Linux), caminhos Windows não funcionam.
-# Então usamos uma pasta local do repo por padrão, mas mantemos compatível com Windows.
+# Compatível com GitHub Actions (Linux) e Windows
 DEFAULT_EXPORT_PATH = os.path.join(os.getcwd(), "export")
 DEFAULT_LOG_PATH = os.path.join(os.getcwd(), "logs")
 
@@ -48,6 +51,31 @@ def log(message: str) -> None:
     os.makedirs(LOG_PATH, exist_ok=True)
     with open(os.path.join(LOG_PATH, "job.log"), "a", encoding="utf-8") as f:
         f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} - {message}\n")
+
+# ==============================
+# BUSCAR NOME DO CLIENTE (via /customers/{id}) + CACHE
+# ==============================
+def buscar_nome_cliente(customer_id: str) -> str:
+    if not customer_id:
+        return ""
+
+    # evita chamar API várias vezes
+    if customer_id in CLIENTES_CACHE:
+        return CLIENTES_CACHE[customer_id]
+
+    url = f"{BASE_URL}/customers/{customer_id}"
+
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=20)
+        if resp.status_code == 200:
+            nome = resp.json().get("name", "") or ""
+        else:
+            nome = ""
+    except Exception:
+        nome = ""
+
+    CLIENTES_CACHE[customer_id] = nome
+    return nome
 
 # ==============================
 # BUSCAR COBRANÇAS VENCIDAS (com paginação)
@@ -84,7 +112,7 @@ def buscar_vencidos(limit: int = 100) -> list[dict]:
     return todos
 
 # ==============================
-# EXPORTAR PARA EXCEL (com filtro de valor)
+# EXPORTAR PARA EXCEL (com filtro de valor + nome do cliente)
 # ==============================
 def exportar_excel(dados: list[dict]) -> str | None:
     os.makedirs(EXPORT_PATH, exist_ok=True)
@@ -121,9 +149,13 @@ def exportar_excel(dados: list[dict]) -> str | None:
 
     linhas = []
     for item in dados_filtrados:
+        customer_id = item.get("customer") or ""
+        nome_cliente = buscar_nome_cliente(customer_id)
+
         linhas.append({
-            "ID": item.get("id"),
-            "CustomerID": item.get("customer"),
+            "CustomerID": customer_id,
+            "Cliente": nome_cliente,
+            "ID_Pagamento": item.get("id"),
             "Valor": item.get("value"),
             "Vencimento": item.get("dueDate"),
             "Tipo": item.get("billingType"),
@@ -136,7 +168,7 @@ def exportar_excel(dados: list[dict]) -> str | None:
 
     df = pd.DataFrame(linhas)
 
-    # ✅ trava de segurança extra
+    # ✅ trava de segurança extra (garante que não tem >= limite)
     if "Valor" in df.columns:
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df = df[df["Valor"] < LIMITE_VALOR].copy()
@@ -147,9 +179,10 @@ def exportar_excel(dados: list[dict]) -> str | None:
         print(msg)
         return None
 
-    if "Vencimento" in df.columns:
-        # Vencimento pode ser string, mas ordena ok.
-        df = df.sort_values(by=["Vencimento", "Valor"], ascending=[True, False])
+    # Ordenação
+    cols = [c for c in ["Vencimento", "Valor"] if c in df.columns]
+    if cols:
+        df = df.sort_values(by=cols, ascending=[True, False] if len(cols) == 2 else [True])
 
     nome_arquivo = f"vencidos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     caminho = os.path.join(EXPORT_PATH, nome_arquivo)
@@ -178,11 +211,10 @@ def main() -> None:
     # Envia e-mail somente se gerou arquivo
     if arquivo:
         enviar_email_com_anexo(
-            assunto="Asaas - Clientes Vencidos (somente < R$ 1.000)",
+            assunto="Asaas - Clientes Vencidos Mecanicaweb",
             corpo=f"Segue planilha em anexo com os títulos vencidos abaixo de R$ {LIMITE_VALOR:.2f}.",
             destinatarios=[
                 "vendas@mecanicaweb.com.br",
-                                
             ],
             arquivo=arquivo
         )
