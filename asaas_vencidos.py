@@ -18,6 +18,10 @@ print("CWD:", os.getcwd())
 API_KEY = os.environ.get("ASAAS_API_KEY")
 BASE_URL = os.environ.get("ASAAS_BASE_URL", "https://www.asaas.com/api/v3")
 
+# Limite para NÃO incluir cobranças altas (ex: robô)
+# Você pode sobrescrever via variável/secret: MAX_PAYMENT_VALUE
+LIMITE_VALOR = float(os.environ.get("MAX_PAYMENT_VALUE", "1000"))
+
 if not API_KEY:
     raise Exception("API Key não configurada. Configure ASAAS_API_KEY nas variáveis de ambiente.")
 
@@ -28,8 +32,14 @@ HEADERS = {
     "User-Agent": "mecanicaautomation/1.0"
 }
 
-EXPORT_PATH = r"C:\Tanigawa\mecanicaautomation\export"
-LOG_PATH = r"C:\Tanigawa\mecanicaautomation\logs"
+# IMPORTANTÍSSIMO:
+# No GitHub Actions (Linux), caminhos Windows não funcionam.
+# Então usamos uma pasta local do repo por padrão, mas mantemos compatível com Windows.
+DEFAULT_EXPORT_PATH = os.path.join(os.getcwd(), "export")
+DEFAULT_LOG_PATH = os.path.join(os.getcwd(), "logs")
+
+EXPORT_PATH = os.environ.get("EXPORT_PATH", DEFAULT_EXPORT_PATH)
+LOG_PATH = os.environ.get("LOG_PATH", DEFAULT_LOG_PATH)
 
 # ==============================
 # LOG
@@ -74,18 +84,43 @@ def buscar_vencidos(limit: int = 100) -> list[dict]:
     return todos
 
 # ==============================
-# EXPORTAR PARA EXCEL
+# EXPORTAR PARA EXCEL (com filtro de valor)
 # ==============================
 def exportar_excel(dados: list[dict]) -> str | None:
     os.makedirs(EXPORT_PATH, exist_ok=True)
 
     if not dados:
-        log("Nenhuma cobrança vencida encontrada (status=OVERDUE).")
-        print("Nenhuma cobrança vencida encontrada (status=OVERDUE).")
+        msg = "Nenhuma cobrança vencida encontrada (status=OVERDUE)."
+        log(msg)
+        print(msg)
+        return None
+
+    # ✅ FILTRO: só valores abaixo do limite
+    dados_filtrados: list[dict] = []
+    pulados_acima = 0
+
+    for item in dados:
+        try:
+            valor = float(item.get("value") or 0)
+        except (TypeError, ValueError):
+            valor = 0.0
+
+        if valor < LIMITE_VALOR:
+            dados_filtrados.append(item)
+        else:
+            pulados_acima += 1
+
+    log(f"Filtro aplicado: mantendo valores < R$ {LIMITE_VALOR:.2f}. Pulados (>= limite): {pulados_acima}")
+    print(f"Filtro aplicado: mantendo valores < R$ {LIMITE_VALOR:.2f}. Pulados (>= limite): {pulados_acima}")
+
+    if not dados_filtrados:
+        msg = f"Nenhuma cobrança vencida abaixo de R$ {LIMITE_VALOR:.2f}."
+        log(msg)
+        print(msg)
         return None
 
     linhas = []
-    for item in dados:
+    for item in dados_filtrados:
         linhas.append({
             "ID": item.get("id"),
             "CustomerID": item.get("customer"),
@@ -101,15 +136,27 @@ def exportar_excel(dados: list[dict]) -> str | None:
 
     df = pd.DataFrame(linhas)
 
+    # ✅ trava de segurança extra
+    if "Valor" in df.columns:
+        df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+        df = df[df["Valor"] < LIMITE_VALOR].copy()
+
+    if df.empty:
+        msg = f"Após filtro/trava, não restou nenhuma cobrança abaixo de R$ {LIMITE_VALOR:.2f}."
+        log(msg)
+        print(msg)
+        return None
+
     if "Vencimento" in df.columns:
+        # Vencimento pode ser string, mas ordena ok.
         df = df.sort_values(by=["Vencimento", "Valor"], ascending=[True, False])
 
     nome_arquivo = f"vencidos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     caminho = os.path.join(EXPORT_PATH, nome_arquivo)
     df.to_excel(caminho, index=False)
 
-    log(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)}")
-    print(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)}")
+    log(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)} | Limite: < R$ {LIMITE_VALOR:.2f}")
+    print(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)} | Limite: < R$ {LIMITE_VALOR:.2f}")
     return caminho
 
 # ==============================
@@ -119,31 +166,32 @@ def main() -> None:
     log("===== INICIO JOB ASAAS VENCIDOS =====")
     print("Iniciando job...")
 
+    log(f"Config: BASE_URL={BASE_URL} | LIMITE_VALOR={LIMITE_VALOR:.2f} | EXPORT_PATH={EXPORT_PATH}")
+    print(f"Config: LIMITE_VALOR={LIMITE_VALOR:.2f} | EXPORT_PATH={EXPORT_PATH}")
+
     dados = buscar_vencidos()
-    print("Qtd vencidos encontrados:", len(dados))
-    log(f"Qtd vencidos encontrados: {len(dados)}")
+    print("Qtd vencidos encontrados (total):", len(dados))
+    log(f"Qtd vencidos encontrados (total): {len(dados)}")
 
     arquivo = exportar_excel(dados)
 
     # Envia e-mail somente se gerou arquivo
     if arquivo:
         enviar_email_com_anexo(
-        assunto="Asaas - Clientes Vencidos",
-        corpo="Segue planilha em anexo com os títulos vencidos.",
-        destinatarios=["vendas@mecanicaweb.com.br",
-                       "suporte@istweb.com.br",
-                       "marcelino@istweb.com.br"
-                                              
-                       ],
-        arquivo=arquivo
+            assunto="Asaas - Clientes Vencidos (somente < R$ 1.000)",
+            corpo=f"Segue planilha em anexo com os títulos vencidos abaixo de R$ {LIMITE_VALOR:.2f}.",
+            destinatarios=[
+                "vendas@mecanicaweb.com.br",
+                                
+            ],
+            arquivo=arquivo
         )
 
-        
         log("E-mail enviado com anexo.")
         print("E-mail enviado com anexo.")
     else:
-        log("Sem arquivo para enviar por e-mail (sem vencidos).")
-        print("Sem arquivo para enviar por e-mail (sem vencidos).")
+        log("Sem arquivo para enviar por e-mail (sem vencidos no critério).")
+        print("Sem arquivo para enviar por e-mail (sem vencidos no critério).")
 
     log("===== FIM JOB ASAAS VENCIDOS =====")
     print("Job finalizado.")
