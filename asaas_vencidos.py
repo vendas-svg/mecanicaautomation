@@ -212,7 +212,7 @@ def main() -> None:
     if arquivo:
         enviar_email_com_anexo(
             assunto="Asaas - Clientes Vencidos Mecanicaweb",
-            corpo=f"Segue planilha em anexo com os títulos vencidos abaixo de R$ {LIMITE_VALOR:.2f}.",
+            corpo="Segue planilha em anexo com os títulos vencidos Mecanicaweb ",
             destinatarios=[
                 "vendas@mecanicaweb.com.br",
                 "marcelino@istweb.com.br",
