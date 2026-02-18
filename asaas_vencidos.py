@@ -216,6 +216,8 @@ def main() -> None:
             destinatarios=[
                 "vendas@mecanicaweb.com.br",
                 "marcelino@istweb.com.br",
+                "suporte@istweb.com.br",
+                "tanigawaobk@gmail.com",
             ],
             arquivo=arquivo
         )
