@@ -2,12 +2,15 @@ name: Asaas Vencidos (diário)
 
 on:
   schedule:
+    # 08:00 São Paulo (UTC-3)
     - cron: "0 11 * * *"
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,18 +19,27 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run job
+      - name: Run job (with retry)
         env:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           ASAAS_API_KEY: ${{ secrets.ASAAS_API_KEY }}
+          ASAAS_BASE_URL: "https://api.asaas.com/v3"
+          MAX_PAYMENT_VALUE: "1000"
         run: |
-          python asaas_vencidos.py
+          for i in 1 2 3; do
+            echo "Tentativa $i..."
+            python asaas_vencidos.py && exit 0
+            echo "Falhou tentativa $i, aguardando..."
+            sleep $((i*30))
+          done
+          exit 1
