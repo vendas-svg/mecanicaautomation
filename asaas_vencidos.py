@@ -148,7 +148,7 @@ def buscar_vencidos(limit: int = 100) -> list[dict]:
 # ==============================
 # EXPORTAR PARA EXCEL (com filtro de valor + nome do cliente)
 # ==============================
-def exportar_excel(dados: list[dict]) -> str | None:
+def exportar_excel(dados: list[dict]):
     os.makedirs(EXPORT_PATH, exist_ok=True)
 
     if not dados:
@@ -157,7 +157,6 @@ def exportar_excel(dados: list[dict]) -> str | None:
         print(msg)
         return None
 
-    # ✅ FILTRO: só valores abaixo do limite
     dados_filtrados: list[dict] = []
     pulados_acima = 0
 
@@ -202,9 +201,6 @@ def exportar_excel(dados: list[dict]) -> str | None:
 
     df = pd.DataFrame(linhas)
 
-    total_valor = df["Valor"].sum()
-
-    # trava extra
     if "Valor" in df.columns:
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df = df[df["Valor"] < LIMITE_VALOR].copy()
@@ -215,11 +211,9 @@ def exportar_excel(dados: list[dict]) -> str | None:
         print(msg)
         return None
 
-        total_valor = df["Valor"].sum()
+    total_valor = df["Valor"].sum()
 
-    # Ordenação
     if "Vencimento" in df.columns:
-        # dueDate costuma vir YYYY-MM-DD; tentar converter ajuda a ordenar certo
         df["Vencimento_dt"] = pd.to_datetime(df["Vencimento"], errors="coerce")
         df = df.sort_values(by=["Vencimento_dt", "Valor"], ascending=[True, False])
         df = df.drop(columns=["Vencimento_dt"])
@@ -232,8 +226,7 @@ def exportar_excel(dados: list[dict]) -> str | None:
 
     log(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)} | Limite: < R$ {LIMITE_VALOR:.2f}")
     print(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)} | Limite: < R$ {LIMITE_VALOR:.2f}")
-    return caminho,total_valor
-
+    return caminho, total_valor
 # ==============================
 # EXECUÇÃO PRINCIPAL
 # ==============================
@@ -250,25 +243,25 @@ def main() -> None:
 
     resultado = exportar_excel(dados)
 
-if resultado:
-    arquivo, total_valor = resultado
+    if resultado:
+        arquivo, total_valor = resultado
 
-    total_formatado = f"R$ {total_valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        total_formatado = f"R$ {total_valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-    if arquivo:
-        enviar_email_com_anexo(
-            assunto=f"Asaas - Clientes Vencidos Mecanicaweb | Total: {total_formatado}",
-            corpo=f"Segue planilha em anexo.\n\nTotal de valores vencidos: {total_formatado}",
-            destinatarios=[
-                "vendas@mecanicaweb.com.br",
-                "marcelino@istweb.com.br",
-                "suporte@istweb.com.br",
-                "tanigawaobk@gmail.com",
-            ],
-            arquivo=arquivo,
-        )
-        log("E-mail enviado com anexo.")
-        print("E-mail enviado com anexo.")
+        if arquivo:
+            enviar_email_com_anexo(
+                assunto=f"Asaas - Clientes Vencidos Mecanicaweb | Total: {total_formatado}",
+                corpo=f"Segue planilha em anexo.\n\nTotal de valores vencidos: {total_formatado}",
+                destinatarios=[
+                    "vendas@mecanicaweb.com.br",
+                    "marcelino@istweb.com.br",
+                    "suporte@istweb.com.br",
+                    "tanigawaobk@gmail.com",
+                ],
+                arquivo=arquivo,
+            )
+            log("E-mail enviado com anexo.")
+            print("E-mail enviado com anexo.")
     else:
         log("Sem arquivo para enviar por e-mail (sem vencidos no critério).")
         print("Sem arquivo para enviar por e-mail (sem vencidos no critério).")
