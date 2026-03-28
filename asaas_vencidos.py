@@ -202,6 +202,8 @@ def exportar_excel(dados: list[dict]) -> str | None:
 
     df = pd.DataFrame(linhas)
 
+    total_valor = df["Valor"].sum()
+
     # trava extra
     if "Valor" in df.columns:
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
@@ -228,7 +230,7 @@ def exportar_excel(dados: list[dict]) -> str | None:
 
     log(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)} | Limite: < R$ {LIMITE_VALOR:.2f}")
     print(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)} | Limite: < R$ {LIMITE_VALOR:.2f}")
-    return caminho
+    return caminho,total_valor
 
 # ==============================
 # EXECUÇÃO PRINCIPAL
@@ -244,12 +246,17 @@ def main() -> None:
     print("Qtd vencidos encontrados (total):", len(dados))
     log(f"Qtd vencidos encontrados (total): {len(dados)}")
 
-    arquivo = exportar_excel(dados)
+    resultado = exportar_excel(dados)
+
+if resultado:
+    arquivo, total_valor = resultado
+
+    total_formatado = f"R$ {total_valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
     if arquivo:
         enviar_email_com_anexo(
-            assunto="Asaas - Clientes Vencidos Mecanicaweb",
-            corpo="Segue planilha em anexo com os títulos vencidos Mecanicaweb.",
+            assunto=f"Asaas - Clientes Vencidos Mecanicaweb | Total: {total_formatado}",
+            corpo=f"Segue planilha em anexo.\n\nTotal de valores vencidos: {total_formatado}",
             destinatarios=[
                 "vendas@mecanicaweb.com.br",
                 "marcelino@istweb.com.br",
