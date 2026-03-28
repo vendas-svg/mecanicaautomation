@@ -298,7 +298,7 @@ def main() -> None:
 
         total_formatado = f'R$ {total_valor:,.2f}'.replace(",", "X").replace(".", ",").replace("X", ".")
 
-        top_clientes = df_resumo.head(5)
+        top_clientes = df_resumo.head(20)
 
         linhas_recomendacao = []
         for _, row in top_clientes.iterrows():
