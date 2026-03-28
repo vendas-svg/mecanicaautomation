@@ -215,6 +215,8 @@ def exportar_excel(dados: list[dict]) -> str | None:
         print(msg)
         return None
 
+        total_valor = df["Valor"].sum()
+
     # Ordenação
     if "Vencimento" in df.columns:
         # dueDate costuma vir YYYY-MM-DD; tentar converter ajuda a ordenar certo
