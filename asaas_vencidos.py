@@ -249,6 +249,9 @@ def main() -> None:
         total_formatado = f"R$ {total_valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
         if arquivo:
+            print("DEBUG_ASSUNTO:", f"Asaas - Clientes Vencidos Mecanicaweb | Total: {total_formatado}")
+            print("DEBUG_CORPO:", f"Segue planilha em anexo.\n\nTotal de valores vencidos: {total_formatado}")
+            print("DEBUG_ARQUIVO:", arquivo)
             enviar_email_com_anexo(
                 assunto=f"Asaas - Clientes Vencidos Mecanicaweb | Total: {total_formatado}",
                 corpo=f"Segue planilha em anexo.\n\nTotal de valores vencidos: {total_formatado}",
