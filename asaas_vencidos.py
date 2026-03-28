@@ -225,24 +225,24 @@ def exportar_excel(dados: list[dict]):
     nome_arquivo = f"vencidos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     caminho = os.path.join(EXPORT_PATH, nome_arquivo)
     with pd.ExcelWriter(caminho, engine="openpyxl") as writer:
-    df.to_excel(writer, sheet_name="Detalhado", index=False)
-    df_resumo.to_excel(writer, sheet_name="Resumo Cliente", index=False)
-    from openpyxl.chart import BarChart, Reference
+        df.to_excel(writer, sheet_name="Detalhado", index=False)
+        df_resumo.to_excel(writer, sheet_name="Resumo Cliente", index=False)
+        from openpyxl.chart import BarChart, Reference
 
-    ws = writer.book["Resumo Cliente"]
+        ws = writer.book["Resumo Cliente"]
 
-    chart = BarChart()
-    chart.title = "Valores em Aberto por Cliente"
-    chart.y_axis.title = "Valor"
-    chart.x_axis.title = "Cliente"
+        chart = BarChart()
+        chart.title = "Valores em Aberto por Cliente"
+        chart.y_axis.title = "Valor"
+        chart.x_axis.title = "Cliente"
 
-    data = Reference(ws, min_col=2, min_row=1, max_row=len(df_resumo)+1)
-    cats = Reference(ws, min_col=1, min_row=2, max_row=len(df_resumo)+1)
+        data = Reference(ws, min_col=2, min_row=1, max_row=len(df_resumo)+1)
+        cats = Reference(ws, min_col=1, min_row=2, max_row=len(df_resumo)+1)
 
-    chart.add_data(data, titles_from_data=True)
-    chart.set_categories(cats)
+        chart.add_data(data, titles_from_data=True)
+        chart.set_categories(cats)
 
-    ws.add_chart(chart, "E2")
+        ws.add_chart(chart, "E2")
 
     log(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)} | Limite: < R$ {LIMITE_VALOR:.2f}")
     print(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)} | Limite: < R$ {LIMITE_VALOR:.2f}")
