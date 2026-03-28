@@ -150,9 +150,9 @@ def buscar_vencidos(limit: int = 100) -> list[dict]:
 # ==============================
 def recomendar_acao(dias_atraso: int, valor_total: float) -> str:
         if dias_atraso >= 90:
-            return "Oferecer versão Cloud e suspender novos atendimentos até regularização."
+            return "Oferecer versão Cloud e SUSPENDER SUPORTE até regularização."
         elif dias_atraso >= 60:
-            return "Oferecer a versão Cloud e contato de cobrança prioritário e negociação imediata."
+            return "Oferecer versão Cloud e SUSPENDER SUPORTE até regularização."
         elif dias_atraso >= 30:
             return "Sugerido reforçar cobrança e acompanhar de perto."
         else:
