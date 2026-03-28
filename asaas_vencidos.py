@@ -200,10 +200,12 @@ def exportar_excel(dados: list[dict]):
         })
 
     df = pd.DataFrame(linhas)
-
+    
     if "Valor" in df.columns:
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df = df[df["Valor"] < LIMITE_VALOR].copy()
+        df_resumo = df.groupby("Cliente", as_index=False)["Valor"].sum()
+        df_resumo = df_resumo.sort_values(by="Valor", ascending=False)
 
     if df.empty:
         msg = f"Após filtro, não restou nenhuma cobrança abaixo de R$ {LIMITE_VALOR:.2f}."
@@ -222,7 +224,25 @@ def exportar_excel(dados: list[dict]):
 
     nome_arquivo = f"vencidos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     caminho = os.path.join(EXPORT_PATH, nome_arquivo)
-    df.to_excel(caminho, index=False)
+    with pd.ExcelWriter(caminho, engine="openpyxl") as writer:
+    df.to_excel(writer, sheet_name="Detalhado", index=False)
+    df_resumo.to_excel(writer, sheet_name="Resumo Cliente", index=False)
+    from openpyxl.chart import BarChart, Reference
+
+    ws = writer.book["Resumo Cliente"]
+
+    chart = BarChart()
+    chart.title = "Valores em Aberto por Cliente"
+    chart.y_axis.title = "Valor"
+    chart.x_axis.title = "Cliente"
+
+    data = Reference(ws, min_col=2, min_row=1, max_row=len(df_resumo)+1)
+    cats = Reference(ws, min_col=1, min_row=2, max_row=len(df_resumo)+1)
+
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(cats)
+
+    ws.add_chart(chart, "E2")
 
     log(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)} | Limite: < R$ {LIMITE_VALOR:.2f}")
     print(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)} | Limite: < R$ {LIMITE_VALOR:.2f}")
