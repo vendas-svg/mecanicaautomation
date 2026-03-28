@@ -148,6 +148,17 @@ def buscar_vencidos(limit: int = 100) -> list[dict]:
 # ==============================
 # EXPORTAR PARA EXCEL (com filtro de valor + nome do cliente)
 # ==============================
+def recomendar_acao(dias_atraso: int, valor_total: float) -> str:
+        if dias_atraso >= 90:
+            return "Oferecer versão Cloud e suspender novos atendimentos até regularização."
+        elif dias_atraso >= 60:
+            return "Oferecer a versão Cloud e contato de cobrança prioritário e negociação imediata."
+        elif dias_atraso >= 30:
+            return "Sugerido reforçar cobrança e acompanhar de perto."
+        else:
+            return "Sugerido lembrete amigável e acompanhamento."
+
+
 def exportar_excel(dados: list[dict]):
     os.makedirs(EXPORT_PATH, exist_ok=True)
 
@@ -204,8 +215,23 @@ def exportar_excel(dados: list[dict]):
     if "Valor" in df.columns:
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
         df = df[df["Valor"] < LIMITE_VALOR].copy()
-        df_resumo = df.groupby("Cliente", as_index=False)["Valor"].sum()
+        df["Vencimento_dt"] = pd.to_datetime(df["Vencimento"], errors="coerce")
+        hoje = pd.Timestamp.today().normalize()
+
+        df_resumo = df.groupby("Cliente", as_index=False).agg(
+            Valor=("Valor", "sum"),
+            VencimentoMaisAntigo=("Vencimento_dt", "min")
+        )
+
+        df_resumo["DiasAtraso"] = (hoje - df_resumo["VencimentoMaisAntigo"]).dt.days.fillna(0).astype(int)
         df_resumo = df_resumo.sort_values(by="Valor", ascending=False)
+
+        df_resumo["Recomendacao"] = df_resumo.apply(
+            lambda row: recomendar_acao(row["DiasAtraso"], row["Valor"]),
+            axis=1
+        )
+                
+
 
     if df.empty:
         msg = f"Após filtro, não restou nenhuma cobrança abaixo de R$ {LIMITE_VALOR:.2f}."
@@ -246,7 +272,11 @@ def exportar_excel(dados: list[dict]):
 
     log(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)} | Limite: < R$ {LIMITE_VALOR:.2f}")
     print(f"Arquivo gerado: {nome_arquivo} | Registros: {len(df)} | Limite: < R$ {LIMITE_VALOR:.2f}")
-    return caminho, total_valor
+    return caminho, total_valor, df_resumo
+
+
+    
+
 # ==============================
 # EXECUÇÃO PRINCIPAL
 # ==============================
@@ -264,17 +294,33 @@ def main() -> None:
     resultado = exportar_excel(dados)
 
     if resultado:
-        arquivo, total_valor = resultado
+        arquivo, total_valor, df_resumo = resultado
 
-        total_formatado = f"R$ {total_valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        total_formatado = f'R$ {total_valor:,.2f}'.replace(",", "X").replace(".", ",").replace("X", ".")
 
+        top_clientes = df_resumo.head(5)
+
+        linhas_recomendacao = []
+        for _, row in top_clientes.iterrows():
+            valor_fmt = f'R$ {row["Valor"]:,.2f}'.replace(",", "X").replace(".", ",").replace("X", ".")
+            linhas_recomendacao.append(
+                f'- {row["Cliente"]}: {valor_fmt} | {row["DiasAtraso"]} dias em atraso | {row["Recomendacao"]}'
+            )
+
+        texto_recomendacoes = "\n".join(linhas_recomendacao)
+
+        corpo_email = (
+            f"Segue planilha em anexo.\n\n"
+            f"Total de valores vencidos: {total_formatado}\n\n"
+            f"Recomendações:\n{texto_recomendacoes}"
+        )
         if arquivo:
             print("DEBUG_ASSUNTO:", f"Asaas - Clientes Vencidos Mecanicaweb | Total: {total_formatado}")
             print("DEBUG_CORPO:", f"Segue planilha em anexo.\n\nTotal de valores vencidos: {total_formatado}")
             print("DEBUG_ARQUIVO:", arquivo)
             enviar_email_com_anexo(
                 assunto=f"Asaas - Clientes Vencidos Mecanicaweb | Total: {total_formatado}",
-                corpo=f"Segue planilha em anexo.\n\nTotal de valores vencidos: {total_formatado}",
+                corpo=corpo_email,
                 destinatarios=[
                     "vendas@mecanicaweb.com.br",
                     "marcelino@istweb.com.br",
@@ -282,7 +328,7 @@ def main() -> None:
                     "tanigawaobk@gmail.com",
                 ],
                 arquivo=arquivo,
-            )
+        )
             log("E-mail enviado com anexo.")
             print("E-mail enviado com anexo.")
     else:
